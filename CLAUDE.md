@@ -180,63 +180,67 @@ initializeRevenueCat(user?.id); // passer l'ID Supabase comme appUserID RevenueC
 
 ## Base de données Supabase
 
-### Schéma (tables principales)
+### Migration
 
-```sql
--- Profils utilisateur (sync avec auth.users via trigger)
-create table profiles (
-  id uuid primary key references auth.users(id),
-  email text not null,
-  first_name text not null,
-  avatar_url text,
-  created_at timestamptz default now(),
-  updated_at timestamptz default now()
-);
+Fichier : `supabase/migrations/001_init.sql`
+Appliquer via : `npx supabase db push`
 
--- Fiches de révision
-create table flashcards (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid references profiles(id) on delete cascade,
-  title text not null,
-  subject text not null,
-  content text not null,       -- contenu markdown généré par l'IA
-  source_text text,            -- texte source fourni par l'utilisateur
-  created_at timestamptz default now(),
-  updated_at timestamptz default now()
-);
+### Tables
 
--- Sessions de quizz
-create table quiz_sessions (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid references profiles(id) on delete cascade,
-  flashcard_id uuid references flashcards(id) on delete cascade,
-  score integer default 0,
-  total_questions integer default 0,
-  completed_at timestamptz,
-  created_at timestamptz default now()
-);
+| Table | Rôle |
+|---|---|
+| `profiles` | Profil utilisateur, synchronisé depuis `auth.users` via trigger |
+| `courses` | Cours regroupant des fiches (matière + niveau) |
+| `flashcards` | Fiches question/réponse avec données de répétition espacée |
+| `quiz_sessions` | Sessions de quizz complètes (score, durée) |
+| `quiz_results` | Détail de chaque réponse dans une session |
 
--- Réponses individuelles
-create table quiz_answers (
-  id uuid primary key default gen_random_uuid(),
-  session_id uuid references quiz_sessions(id) on delete cascade,
-  question_index integer not null,
-  selected_index integer not null,
-  is_correct boolean not null,
-  created_at timestamptz default now()
-);
+### Schéma résumé
+
+```
+profiles       (id, email, full_name, avatar_url, tier, created_at, updated_at)
+  └── courses  (id, user_id→profiles, title, subject, level, color, icon, created_at)
+        └── flashcards  (id, user_id→profiles, course_id→courses,
+                         question, answer, source_text,
+                         difficulty 1-5, review_count, last_reviewed, next_review,
+                         created_at, updated_at)
+        └── quiz_sessions  (id, user_id→profiles, course_id→courses,
+                            score, total_questions, duration_seconds, completed_at)
+              └── quiz_results  (id, session_id→quiz_sessions, flashcard_id→flashcards,
+                                 user_answer, is_correct, time_spent_seconds, created_at)
 ```
 
-### Row Level Security (RLS)
+### RLS
 
-Activer RLS sur toutes les tables. Politique de base :
+RLS activé sur les 5 tables. Politique uniforme :
+- `profiles` : SELECT + UPDATE sur `id = auth.uid()`
+- `courses`, `flashcards`, `quiz_sessions` : ALL sur `user_id = auth.uid()`
+- `quiz_results` : ALL via sous-requête sur `quiz_sessions.user_id = auth.uid()`
+
+### Triggers
+
+- `trg_profiles_updated_at` → met à jour `profiles.updated_at`
+- `trg_flashcards_updated_at` → met à jour `flashcards.updated_at`
+- `on_auth_user_created` → crée automatiquement un profil à l'inscription
+
+### Fonctions SQL
 
 ```sql
--- Exemple pour flashcards
-create policy "Users can only access their own flashcards"
-  on flashcards for all
-  using (user_id = auth.uid());
+-- Statistiques d'un cours (total fiches, dues, maîtrisées, score moyen quizz…)
+select * from get_course_stats('course-uuid');
+
+-- Fiches à réviser aujourd'hui (algorithme SRS, triées par priorité)
+select * from get_due_flashcards(auth.uid(), 20);
 ```
+
+### Index
+
+- `idx_courses_user_id`
+- `idx_flashcards_user_id`, `idx_flashcards_course_id`
+- `idx_flashcards_next_review` (partiel : `where next_review is not null`)
+- `idx_flashcards_search` (GIN trigram pour recherche plein texte)
+- `idx_quiz_sessions_user_id`, `idx_quiz_sessions_course_id`, `idx_quiz_sessions_completed_at`
+- `idx_quiz_results_session_id`, `idx_quiz_results_flashcard_id`
 
 ### Générateur de types
 
