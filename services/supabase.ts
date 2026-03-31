@@ -1,15 +1,11 @@
 import { createClient } from '@supabase/supabase-js';
 import * as SecureStore from 'expo-secure-store';
 import { Database } from '@/types/database';
+import { Course, Flashcard, GeneratedFlashcard } from '@/types';
 
-// Set these in your .env file and load via expo-constants or a config plugin
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
 const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
 
-/**
- * SecureStore adapter for Supabase auth session persistence on native.
- * Falls back to in-memory on web.
- */
 const ExpoSecureStoreAdapter = {
   getItem: (key: string) => SecureStore.getItemAsync(key),
   setItem: (key: string, value: string) => SecureStore.setItemAsync(key, value),
@@ -25,7 +21,7 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, 
   },
 });
 
-// ─── Auth helpers ─────────────────────────────────────────────────────────────
+// ─── Auth ─────────────────────────────────────────────────────────────────────
 
 export async function signUp(
   email: string,
@@ -36,22 +32,9 @@ export async function signUp(
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
-    options: {
-      // Transmis à auth.users.raw_user_meta_data → lu par le trigger handle_new_user
-      data: { full_name: firstName, level },
-    },
+    options: { data: { full_name: firstName, level } },
   });
   if (error) throw error;
-
-  // Si l'inscription ne nécessite pas de confirmation email, le profil est déjà
-  // créé par le trigger. On met à jour le niveau qui n'est pas dans le trigger.
-  if (data.user) {
-    await supabase
-      .from('profiles')
-      .update({ full_name: firstName })
-      .eq('id', data.user.id);
-  }
-
   return data;
 }
 
@@ -72,28 +55,74 @@ export async function getSession() {
   return data.session;
 }
 
-// ─── Flashcard helpers ────────────────────────────────────────────────────────
+// ─── Courses ──────────────────────────────────────────────────────────────────
 
-export async function getFlashcards(userId: string) {
+export async function getCourses(userId: string): Promise<Course[]> {
   const { data, error } = await supabase
-    .from('flashcards')
+    .from('courses')
     .select('*')
     .eq('user_id', userId)
     .order('created_at', { ascending: false });
   if (error) throw error;
-  return data;
+  return (data ?? []) as Course[];
 }
 
-export async function createFlashcard(flashcard: {
+export async function createCourse(course: {
   user_id: string;
   title: string;
   subject: string;
-  content: string;
-  source_text?: string;
-}) {
-  const { data, error } = await supabase.from('flashcards').insert(flashcard).select().single();
+  level: 'collège' | 'lycée' | 'licence' | 'master';
+  color: string;
+  icon: string;
+}): Promise<Course> {
+  const { data, error } = await supabase
+    .from('courses')
+    .insert(course)
+    .select()
+    .single();
   if (error) throw error;
-  return data;
+  return data as Course;
+}
+
+export async function deleteCourse(id: string) {
+  const { error } = await supabase.from('courses').delete().eq('id', id);
+  if (error) throw error;
+}
+
+// ─── Flashcards ───────────────────────────────────────────────────────────────
+
+export async function getFlashcardsByCourse(courseId: string): Promise<Flashcard[]> {
+  const { data, error } = await supabase
+    .from('flashcards')
+    .select('*')
+    .eq('course_id', courseId)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as Flashcard[];
+}
+
+/** Inserts multiple generated flashcards for a course in a single batch. */
+export async function saveFlashcards(
+  cards: GeneratedFlashcard[],
+  courseId: string,
+  userId: string,
+  sourceText: string,
+): Promise<Flashcard[]> {
+  const rows = cards.map((c) => ({
+    course_id:   courseId,
+    user_id:     userId,
+    question:    c.question,
+    answer:      c.answer,
+    difficulty:  c.difficulty,
+    source_text: sourceText,
+  }));
+
+  const { data, error } = await supabase
+    .from('flashcards')
+    .insert(rows)
+    .select();
+  if (error) throw error;
+  return (data ?? []) as Flashcard[];
 }
 
 export async function deleteFlashcard(id: string) {
@@ -101,24 +130,30 @@ export async function deleteFlashcard(id: string) {
   if (error) throw error;
 }
 
-// ─── Quiz helpers ─────────────────────────────────────────────────────────────
+// ─── Quiz sessions ────────────────────────────────────────────────────────────
 
 export async function getQuizSessions(userId: string) {
   const { data, error } = await supabase
     .from('quiz_sessions')
-    .select('*, quiz_answers(*)')
+    .select('*')
     .eq('user_id', userId)
-    .order('created_at', { ascending: false });
+    .order('completed_at', { ascending: false });
   if (error) throw error;
-  return data;
+  return data ?? [];
 }
 
 export async function createQuizSession(session: {
   user_id: string;
-  flashcard_id: string;
-  score?: number;
+  course_id: string;
+  score: number;
+  total_questions: number;
+  duration_seconds: number;
 }) {
-  const { data, error } = await supabase.from('quiz_sessions').insert(session).select().single();
+  const { data, error } = await supabase
+    .from('quiz_sessions')
+    .insert(session)
+    .select()
+    .single();
   if (error) throw error;
   return data;
 }
