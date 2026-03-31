@@ -27,13 +27,31 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, 
 
 // ─── Auth helpers ─────────────────────────────────────────────────────────────
 
-export async function signUp(email: string, password: string, firstName: string) {
+export async function signUp(
+  email: string,
+  password: string,
+  firstName: string,
+  level: 'collège' | 'lycée' | 'licence' | 'master',
+) {
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
-    options: { data: { first_name: firstName } },
+    options: {
+      // Transmis à auth.users.raw_user_meta_data → lu par le trigger handle_new_user
+      data: { full_name: firstName, level },
+    },
   });
   if (error) throw error;
+
+  // Si l'inscription ne nécessite pas de confirmation email, le profil est déjà
+  // créé par le trigger. On met à jour le niveau qui n'est pas dans le trigger.
+  if (data.user) {
+    await supabase
+      .from('profiles')
+      .update({ full_name: firstName })
+      .eq('id', data.user.id);
+  }
+
   return data;
 }
 

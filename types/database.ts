@@ -20,6 +20,7 @@ export interface Database {
           full_name:  string;
           avatar_url: string | null;
           tier:       Tier;
+          level:      Level | null;
           created_at: string;
           updated_at: string;
         };
@@ -29,6 +30,7 @@ export interface Database {
           full_name?:  string;
           avatar_url?: string | null;
           tier?:       Tier;
+          level?:      Level | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -36,6 +38,7 @@ export interface Database {
           full_name?:  string;
           avatar_url?: string | null;
           tier?:       Tier;
+          level?:      Level | null;
           updated_at?: string;
         };
       };
