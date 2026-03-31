@@ -33,11 +33,10 @@ export interface FlashcardContent {
 // ─── Quiz ─────────────────────────────────────────────────────────────────────
 
 export interface QuizQuestion {
-  id: string;
-  question: string;
-  options: string[];
-  correct_index: number;
-  explanation: string;
+  question:      string;
+  choices:       [string, string, string, string]; // toujours 4 choix
+  correct_index: number;                           // 0–3
+  explanation:   string;
 }
 
 export interface QuizSession {

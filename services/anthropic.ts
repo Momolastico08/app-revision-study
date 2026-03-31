@@ -1,19 +1,41 @@
-import Anthropic from '@anthropic-ai/sdk';
-import { FlashcardContent, QuizQuestion } from '@/types';
-
-// IMPORTANT: Never expose your Anthropic API key in the client.
-// All Anthropic calls should be proxied through your Supabase Edge Functions
-// to keep the key server-side only.
+// services/anthropic.ts
 //
-// Pattern:
-//   client → Supabase Edge Function → Anthropic API
-//
-// The helpers below call your Supabase Edge Functions, not the SDK directly.
-// The SDK import is kept for reference / potential server-side usage.
+// Client-side wrappers pour les Supabase Edge Functions IA.
+// La clé Anthropic n'est jamais exposée côté client :
+//   App (JWT) → Edge Function → Anthropic API
 
 const EDGE_FUNCTION_BASE = process.env.EXPO_PUBLIC_SUPABASE_URL
   ? `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1`
   : '';
+
+// ─── Types (miroir des interfaces des Edge Functions) ─────────────────────────
+
+export interface GeneratedFlashcard {
+  question:   string;
+  answer:     string;
+  difficulty: number; // 1–5
+}
+
+export interface GenerateFlashcardsResponse {
+  flashcards: GeneratedFlashcard[];
+  count:      number;
+}
+
+export interface QuizQuestion {
+  question:      string;
+  choices:       [string, string, string, string];
+  correct_index: number; // 0–3
+  explanation:   string;
+}
+
+export interface GenerateQuizResponse {
+  questions:       QuizQuestion[];
+  count:           number;
+  course_id:       string;
+  flashcard_count: number;
+}
+
+// ─── Helper interne ───────────────────────────────────────────────────────────
 
 async function callEdgeFunction<T>(
   functionName: string,
@@ -21,89 +43,83 @@ async function callEdgeFunction<T>(
   accessToken: string,
 ): Promise<T> {
   const response = await fetch(`${EDGE_FUNCTION_BASE}/${functionName}`, {
-    method: 'POST',
+    method:  'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${accessToken}`,
+      'Authorization': `Bearer ${accessToken}`,
     },
     body: JSON.stringify(body),
   });
 
+  const data = await response.json().catch(() => null);
+
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: response.statusText }));
-    throw new Error(error.message ?? 'Edge function error');
+    const message = data?.error ?? response.statusText;
+    throw new EdgeFunctionError(message, response.status);
   }
 
-  return response.json() as Promise<T>;
+  return data as T;
 }
 
-// ─── Flashcard generation ─────────────────────────────────────────────────────
+export class EdgeFunctionError extends Error {
+  constructor(message: string, public readonly status: number) {
+    super(message);
+    this.name = 'EdgeFunctionError';
+  }
+}
+
+// ─── generate-flashcards ──────────────────────────────────────────────────────
 
 /**
- * Generate structured flashcard content from a body of text.
- * Calls the `generate-flashcard` Supabase Edge Function which wraps the Anthropic API.
+ * Génère des fiches de révision à partir d'un texte source.
+ *
+ * @param text         - Texte de cours brut
+ * @param courseId     - UUID du cours cible
+ * @param count        - Nombre de fiches souhaitées (plafonné par le tier côté serveur)
+ * @param accessToken  - JWT Supabase de l'utilisateur connecté
+ *
+ * @example
+ * const { flashcards } = await generateFlashcards(courseText, course.id, 10, session.access_token);
+ * // Insérer ensuite dans Supabase :
+ * await supabase.from('flashcards').insert(
+ *   flashcards.map(f => ({ ...f, user_id, course_id, source_text: text }))
+ * );
  */
-export async function generateFlashcard(
-  sourceText: string,
-  subject: string,
+export async function generateFlashcards(
+  text:        string,
+  courseId:    string,
+  count:       number,
   accessToken: string,
-): Promise<FlashcardContent> {
-  return callEdgeFunction<FlashcardContent>(
-    'generate-flashcard',
-    { source_text: sourceText, subject },
+): Promise<GenerateFlashcardsResponse> {
+  return callEdgeFunction<GenerateFlashcardsResponse>(
+    'generate-flashcards',
+    { text, course_id: courseId, count },
     accessToken,
   );
 }
 
-// ─── Quiz generation ──────────────────────────────────────────────────────────
+// ─── generate-quiz ────────────────────────────────────────────────────────────
 
 /**
- * Generate a multiple-choice quiz from flashcard content.
- * Calls the `generate-quiz` Supabase Edge Function.
+ * Génère un QCM à partir d'un ensemble de fiches existantes.
+ *
+ * @param courseId      - UUID du cours
+ * @param flashcardIds  - UUIDs des fiches à utiliser comme source
+ * @param questionCount - Nombre de questions souhaitées (max 20)
+ * @param accessToken   - JWT Supabase de l'utilisateur connecté
+ *
+ * @example
+ * const { questions } = await generateQuiz(course.id, selectedIds, 10, session.access_token);
  */
 export async function generateQuiz(
-  flashcardContent: string,
-  questionCount: number = 5,
-  accessToken: string,
-): Promise<QuizQuestion[]> {
-  return callEdgeFunction<QuizQuestion[]>(
+  courseId:      string,
+  flashcardIds:  string[],
+  questionCount: number,
+  accessToken:   string,
+): Promise<GenerateQuizResponse> {
+  return callEdgeFunction<GenerateQuizResponse>(
     'generate-quiz',
-    { flashcard_content: flashcardContent, question_count: questionCount },
+    { course_id: courseId, flashcard_ids: flashcardIds, question_count: questionCount },
     accessToken,
   );
 }
-
-// ─── Example Edge Function implementation (deploy to Supabase) ────────────────
-//
-// supabase/functions/generate-flashcard/index.ts
-//
-// import Anthropic from 'npm:@anthropic-ai/sdk';
-//
-// const anthropic = new Anthropic({ apiKey: Deno.env.get('ANTHROPIC_API_KEY') });
-//
-// Deno.serve(async (req) => {
-//   const { source_text, subject } = await req.json();
-//
-//   const message = await anthropic.messages.create({
-//     model: 'claude-opus-4-6',
-//     max_tokens: 2048,
-//     messages: [{
-//       role: 'user',
-//       content: `Tu es un expert pédagogique. À partir du texte suivant sur "${subject}",
-//                 génère une fiche de révision structurée avec :
-//                 - Un titre clair
-//                 - Les concepts clés (liste)
-//                 - Un résumé (3-5 phrases)
-//                 - Des points importants à retenir
-//
-//                 Texte : ${source_text}
-//
-//                 Réponds en JSON avec les clés : title, key_concepts, summary, key_points.`,
-//     }],
-//   });
-//
-//   const content = JSON.parse(message.content[0].text);
-//   return new Response(JSON.stringify(content), {
-//     headers: { 'Content-Type': 'application/json' },
-//   });
-// });

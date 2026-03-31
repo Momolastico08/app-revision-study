@@ -14,7 +14,7 @@ export function QuizCard({ question, selectedIndex, onSelect, showAnswer }: Quiz
     <View style={styles.container}>
       <Text style={styles.question}>{question.question}</Text>
       <View style={styles.options}>
-        {question.options.map((option, index) => {
+        {question.choices.map((option, index) => {
           const isSelected = selectedIndex === index;
           const isCorrect = index === question.correct_index;
           let optionStyle = styles.option;
