@@ -415,26 +415,127 @@ npx eas build --platform android
 ## Roadmap
 
 ### Phase 1 — MVP (en cours)
+
+#### Acquis
 - [x] Setup Expo Router + navigation tabs
 - [x] Structure de dossiers et services de base
 - [x] Types TypeScript et schéma DB
+
+#### Auth & données
 - [ ] Auth Supabase (login / register fonctionnels)
 - [ ] CRUD fiches de révision
 - [ ] Génération IA via Edge Function
-- [ ] Quizz basique
 
-### Phase 2 — Monétisation
-- [ ] Intégration RevenueCat complète
-- [ ] Écran paywall
-- [ ] Gating des features pro
+#### Écrans manquants
+- [ ] Onboarding : 4 écrans de présentation au premier lancement
+  (valeur de l'app, fonctionnalités clés, CTA inscription)
+- [ ] Écran Paramètres : changer email/mot de passe,
+  supprimer compte, notifications, thème, langue
+- [ ] Écran Profil complet : photo avatar, stats globales
+  (fiches créées, quizz réussis, streak), badges obtenus
+- [ ] Écran Paywall : présentation features Pro,
+  essai gratuit 7 jours, tarifs, restore purchases
 
-### Phase 3 — Engagement
-- [ ] Streak quotidien
-- [ ] Notifications push (révisions planifiées)
-- [ ] Statistiques de progression
-- [ ] Mode sombre
+#### Quizz
+- [ ] quiz.tsx : liste des cours avec nombre de fiches dispo
+- [ ] QuizSessionScreen : QCM 4 choix, timer 30s par question,
+  barre de progression, feedback vert/rouge immédiat,
+  haptic feedback (bonne/mauvaise réponse),
+  écran résultats final avec score et temps total
+- [ ] Sauvegarde résultats dans quiz_sessions et quiz_results
 
-### Phase 4 — Scale
-- [ ] Partage de fiches entre utilisateurs
-- [ ] Import PDF / photos de cours
-- [ ] Synthèse vocale des fiches
+#### Révision intelligente
+- [ ] Algorithme FSRS (répétition espacée) sur les fiches :
+  calcul automatique de next_review selon les performances
+- [ ] Streak quotidien (jours consécutifs de révision)
+- [ ] Notifications push via Expo Notifications :
+  rappels personnalisés "Tu as X fiches à réviser"
+
+#### UX/UI
+- [ ] Animations et transitions entre écrans (Reanimated 2)
+- [ ] Skeleton loaders sur tous les écrans de chargement
+- [ ] Gestion complète des erreurs réseau avec retry
+- [ ] Mode hors ligne : accès aux fiches sans internet
+  (AsyncStorage local)
+- [ ] Thèmes visuels : mode clair/sombre + couleur d'accent
+
+#### Monétisation
+- [ ] RevenueCat intégration complète :
+  - Essai gratuit 7 jours
+  - Plan Étudiant 4,99€/mois
+  - Plan Pro 9,99€/mois
+  - Restore purchases
+- [ ] Limites appliquées côté Edge Functions :
+  - Gratuit : 10 fiches/mois, 3 quizz/semaine
+  - Étudiant : 50 fiches/mois, quizz illimités
+  - Pro : illimité + features communauté
+
+#### Features IA avancées
+- [ ] Mode "Interroge-moi" : conversation libre avec Claude
+  sur un cours, évaluation des réponses en texte libre
+- [ ] Résumé automatique : génération d'un résumé 1 page
+  avec points clés surlignés depuis un cours importé
+- [ ] Détection des lacunes : après 5+ quizz, l'IA identifie
+  les notions échouées et propose des fiches ciblées
+- [ ] Planning d'examen : l'étudiant entre ses dates d'exam,
+  l'app génère un planning de révision optimisé
+
+#### Publication
+- [ ] Icône app et splash screen haute résolution
+- [ ] Politique de confidentialité + CGU (écran dédié)
+- [ ] Support email intégré dans les paramètres
+- [ ] Screenshots App Store et Google Play
+
+---
+
+### Phase 2 — Communauté (après lancement)
+
+#### Banque de questions communautaire
+- [ ] Table public_flashcards : fiches rendues publiques
+  par les utilisateurs, filtrables par matière et niveau
+- [ ] Système de votes upvote/downvote sur chaque fiche
+- [ ] Modération automatique (score < -10 → masqué)
+- [ ] Import de fiches publiques dans sa bibliothèque
+
+#### Classements
+- [ ] Leaderboard global par matière et niveau d'études
+- [ ] Classement hebdomadaire reseté chaque lundi
+- [ ] Ton rang parmi tous les étudiants de même niveau
+- [ ] Médailles : or/argent/bronze top 3
+
+#### Défi quotidien
+- [ ] 10 questions communes à tous les users chaque jour
+- [ ] Reset à minuit via Supabase cron Edge Function
+- [ ] Classement du jour parmi tous les participants
+- [ ] Streak de défis complétés
+
+#### Système de progression
+- [ ] Points XP gagnés à chaque révision et quizz
+- [ ] Badges débloquables :
+  "7 jours consécutifs", "100 fiches maîtrisées",
+  "Top 10% de la semaine", "Première fiche publique"
+- [ ] Niveau utilisateur (Débutant → Expert → Maître)
+
+#### Mode groupe / promo
+- [ ] Création de groupe avec code d'invitation
+- [ ] Classement interne au groupe
+- [ ] Partage de cours au sein d'un groupe
+- [ ] Mode "TD en direct" : le créateur lance un quizz,
+  tous les membres répondent en temps réel
+
+---
+
+## Limites par plan
+
+| Feature | Gratuit | Étudiant 4,99€ | Pro 9,99€ |
+|---|---|---|---|
+| Fiches générées | 10/mois | 50/mois | Illimité |
+| Quizz | 3/semaine | Illimité | Illimité |
+| Import PDF | ❌ | ✅ | ✅ |
+| Mode Interroge-moi | ❌ | ❌ | ✅ |
+| Résumé automatique | ❌ | ✅ | ✅ |
+| Planning d'examen | ❌ | ❌ | ✅ |
+| Partage communauté | ❌ | ✅ | ✅ |
+| Thèmes visuels | 1 | 3 | Tous |
+| Export PDF fiches | ❌ | ✅ | ✅ |
+| Mode hors ligne | ❌ | ✅ | ✅ |
